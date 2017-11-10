@@ -3,23 +3,13 @@
 from distutils.log import warn as printf
 from os.path import dirname
 from random import randrange as rand
-from sqlalchemy import Column, Integer, String, create_engine, exc, orm
+from sqlalchemy import Column, Integer, String, create_engine, exc, orm, MetaData, Table
 from sqlalchemy.ext.declarative import declarative_base
 from ushuffle_db import DBNAME, NAMELEN, randName, FIELDS, tformat, cformat, setup
 
 DSNs = {'mysql': 'mysql+pymysql://root:123456@localhost/%s' % DBNAME,
 		'sqlite': 'sqlite:///:memory:',
 }
-
-Base = declarative_base()
-
-class Users(Base):
-	__tablename__ = 'users'
-	login = Column(String(NAMELEN))
-	userid = Column(Integer, primary_key = True)
-	projid = Column(Integer)
-	def __str__(self):
-		return ''.join(map(tformat, (self.login, self.userid, self.projid)))
 
 class SQLAlchemyTest(object):
 	def __init__(self, dsn):
@@ -29,59 +19,59 @@ class SQLAlchemyTest(object):
 			raise RuntimeError()
 		
 		try:
-			eng.connect()
+			cxn = eng.connect()
 		except exc.OperationalError:
-			eng = create_engine(dirname(dsn))
-			eng.execute('CREATE DATABASE %s' % DBNAME).close()
-			eng = create_engine(dsn)
+			try:
+				eng = create_engine(dirname(dsn))
+				eng.execute('CREATE DATABASE %s' % DBNAME).close()
+				eng = create_engine(dsn)
+				cxn = eng.connect()
+			except exc.OperationalError:
+				raise RuntimeError()
 		
-		Session = orm.sessionmaker(bind=eng)
-		self.ses = Session()
-		self.users = Users.__table__
-		self.eng = self.users.metadata.bind = eng
-	
+		metadata = MetaData()
+		self.eng = metadata.bind = eng
+		try: 
+			users = Table('users', metadata, autoload=True)
+		except exc.NoSuchTableError:
+			users = Table('users', metadata, 
+				Column('login', String(NAMELEN)),
+				Column('userid', Integer),
+				Column('projid', Integer),
+				)
+		self.cxn = cxn
+		self.users = users
+		
 	def insert(self):
-		self.ses.add_all(
-			Users(login=who, userid=userid, projid=rand(1, 5))\
-			for who, userid in randName()
-		)
-		self.ses.commit()
-	
+		d = [dict(zip(FIELDS, [who, uid, rand(1, 5)]))\
+			for who, uid in randName()]
+		return self.users.insert().execute(*d).rowcount
+
 	def update(self):
+		users = self.users
 		fr = rand(1, 5)
 		to = rand(1, 5)
-		i = -1
-		users = self.ses.query(
-			Users).filter_by(projid=fr).all()
-		for i, user in enumerate(users):
-			user.projid = to
-		self.ses.commit()
-		return fr, to, i+1
+		return (fr, to, 
+			users.update(users.c.projid==fr).execute(projid=to).rowcount)
+
 	def delete(self):
+		users = self.users
 		rm = rand(1, 5)
-		i = -1
-		users = self.ses.query(
-			Users).filter_by(projid=rm).all()
-		for i, user in enumerate(users):
-			self.ses.delete(user)
-		self.ses.commit()
-		return rm, i+1
+		return (rm,
+			users.delete(users.c.projid==rm).execute().rowcount)
 
 	def dbDump(self):
-		users = self.ses.query(Users).all()
-		if not users:
-			print ('\n*** Table is Empty')
-		else:
-			printf('\n%s' % ''.join(map(cformat, FIELDS)))
-			for user in users:
-				printf(user)
-		self.ses.commit()
+		printf('\n%s' % ''.join(map(cformat, FIELDS)))
+		users = self.users.select().execute()
+		for user in users.fetchall():
+			printf(''.join(map(tformat, (user.login, 
+					user.userid, user.projid))))
 	
 	def __getattr__(self, attr):
 		return getattr(self.users, attr)
 
 	def finish(self):
-		self.ses.connection().close()
+		self.cxn.close()
 
 def main():
 	printf('*** Connect to %r database' % DBNAME)
