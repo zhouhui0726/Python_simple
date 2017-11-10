@@ -7,7 +7,7 @@ from sqlalchemy import Column, Integer, String, create_engine, exc, orm
 from sqlalchemy.ext.declarative import declarative_base
 from ushuffle_db import DBNAME, NAMELEN, randName, FIELDS, tformat, cformat, setup
 
-DSNs = {'mysql': 'mysql+pymysql://root:123456@localhost:3306/%s' % DBNAME,
+DSNs = {'mysql': 'mysql+pymysql://root:123456@localhost/%s' % DBNAME,
 		'sqlite': 'sqlite:///:memory:',
 }
 
@@ -38,6 +38,8 @@ class SQLAlchemyTest(object):
 		Session = orm.sessionmaker(bind=eng)
 		self.ses = Session()
 		self.users = Users.__table__
+		# Base.metadata.create_all(eng)
+		# self.users.metadata.create_all(eng)
 		self.eng = self.users.metadata.bind = eng
 	
 	def insert(self):
@@ -68,10 +70,13 @@ class SQLAlchemyTest(object):
 		return rm, i+1
 
 	def dbDump(self):
-		printf('\n%s' % ''.join(map(cformat, FIELDS)))
 		users = self.ses.query(Users).all()
-		for user in users:
-			printf(user)
+		if not users:
+			print ('\n*** Table is Empty')
+		else:
+			printf('\n%s' % ''.join(map(cformat, FIELDS)))
+			for user in users:
+				printf(user)
 		self.ses.commit()
 	
 	def __getattr__(self, attr):
@@ -96,6 +101,7 @@ def main():
 
 	printf('\n*** Create users table (drop old one if app1.)')
 	orm.drop(checkfirst = True)
+	orm.users.metadata.create_all(orm.eng)
 	orm.dbDump()
 
 	printf('\n*** Insert names into table')
