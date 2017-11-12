@@ -7,7 +7,7 @@ from sqlalchemy import Column, Integer, String, create_engine, exc, orm, MetaDat
 from sqlalchemy.ext.declarative import declarative_base
 from ushuffle_db import DBNAME, NAMELEN, randName, FIELDS, tformat, cformat, setup
 
-DSNs = {'mysql': 'mysql+pymysql://root:123456@localhost/%s' % DBNAME,
+DSNs = {'mysql': 'mysql+pymysql://root:111111@localhost/%s' % DBNAME,
 		'sqlite': 'sqlite:///:memory:',
 }
 
